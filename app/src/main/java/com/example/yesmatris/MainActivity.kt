@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
 fun GameScreen(modifier: Modifier = Modifier) {
     val context = LocalContext.current
     val scoreManager = remember { ScoreManager(context) }
+    val soundManager = remember { SoundManager(context) }
     val coroutineScope = rememberCoroutineScope()
 
     val highScore by scoreManager.highScoreFlow.collectAsState(initial = 0)
@@ -49,7 +50,12 @@ fun GameScreen(modifier: Modifier = Modifier) {
     var boardState by remember { mutableStateOf(Array(4) { IntArray(4) { 0 } }) }
     var currentScore by remember { mutableIntStateOf(0) }
     var isGameOver by remember { mutableStateOf(false) }
-    var isPaused by remember { mutableStateOf(false) } // Durdurulma durumu
+    var isPaused by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) } // Ayarlar penceresi açık mı?
+
+    // Ayarlar state'leri
+    var soundEnabled by remember { mutableStateOf(true) }
+    var vibrationEnabled by remember { mutableStateOf(true) }
 
     fun restartGame() {
         engine.resetBoard()
@@ -63,8 +69,24 @@ fun GameScreen(modifier: Modifier = Modifier) {
         restartGame()
     }
 
-    fun updateGameState() {
+    fun handleMove(swipeAction: () -> Unit) {
         if (isGameOver || isPaused) return
+
+        val oldBoard = engine.board.map { it.clone() }.toTypedArray()
+        swipeAction()
+
+        // Tahtada değişiklik olduysa ses çal ve titre
+        var changed = false
+        for (r in 0 until 4) {
+            for (c in 0 until 4) {
+                if (oldBoard[r][c] != engine.board[r][c]) changed = true
+            }
+        }
+
+        if (changed) {
+            soundManager.playPopSound()
+            soundManager.vibrate()
+        }
 
         boardState = engine.board.map { it.clone() }.toTypedArray()
         currentScore = engine.score
@@ -83,19 +105,16 @@ fun GameScreen(modifier: Modifier = Modifier) {
             .fillMaxSize()
             .background(Color(0xFF181A20))
             .pointerInput(Unit) {
-                detectDragGestures(
-                    onDragEnd = {}
-                ) { change, dragAmount ->
-                    // Oyun bittiyse veya duraklatıldıysa hamle yapılmaz
-                    if (!isGameOver && !isPaused) {
+                detectDragGestures(onDragEnd = {}) { change, dragAmount ->
+                    if (!isGameOver && !isPaused && !showSettings) {
                         change.consume()
                         val (x, y) = dragAmount
                         if (abs(x) > abs(y)) {
-                            if (x > 50) { engine.swipeRight(); updateGameState() }
-                            else if (x < -50) { engine.swipeLeft(); updateGameState() }
+                            if (x > 50) handleMove { engine.swipeRight() }
+                            else if (x < -50) handleMove { engine.swipeLeft() }
                         } else {
-                            if (y > 50) { engine.swipeDown(); updateGameState() }
-                            else if (y < -50) { engine.swipeUp(); updateGameState() }
+                            if (y > 50) handleMove { engine.swipeDown() }
+                            else if (y < -50) handleMove { engine.swipeUp() }
                         }
                     }
                 }
@@ -107,37 +126,45 @@ fun GameScreen(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.Center,
             modifier = Modifier.fillMaxSize().padding(16.dp)
         ) {
-            // Üst Bar: Skorlar ve Pause Butonu
+            // Üst Bar: Skorlar, Pause ve Ayarlar Butonu
             Row(
-                modifier = Modifier.fillMaxWidth(0.85f),
+                modifier = Modifier.fillMaxWidth(0.9f),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     ScoreBox(title = "SKORSS", value = currentScore.toString())
                     ScoreBox(title = "REKORSS", value = highScore.toString())
                 }
 
-                // Pause / Resume Butonu
-                Box(
-                    modifier = Modifier
-                        .background(Color(0xFF8F7A66), RoundedCornerShape(8.dp))
-                        .clickable { isPaused = !isPaused }
-                        .padding(horizontal = 12.dp, vertical = 12.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = if (isPaused) "DEVAMSS" else "MOLASS",
-                        fontSize = 14.sp,
-                        color = Color.White,
-                        fontWeight = FontWeight.Bold
-                    )
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    // Pause Butonu
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFF8F7A66), RoundedCornerShape(8.dp))
+                            .clickable { isPaused = !isPaused }
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = if (isPaused) "DEVAMSS" else "MOLASS", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+
+                    // Ayarlar Butonu (Dişli simgesi yerine şık bir metin/buton)
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFF5B6770), RoundedCornerShape(8.dp))
+                            .clickable { showSettings = true }
+                            .padding(horizontal = 10.dp, vertical = 10.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(text = "AYARLARSS", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
                 }
             }
 
             Spacer(modifier = Modifier.height(24.dp))
 
-            // 4x4 Oyun Tahtası
+            // Oyun Tahtası
             Box(
                 modifier = Modifier
                     .size(360.dp)
@@ -154,7 +181,6 @@ fun GameScreen(modifier: Modifier = Modifier) {
                             horizontalArrangement = Arrangement.SpaceAround
                         ) {
                             for (col in 0 until 4) {
-                                // Eğer oyun durdurulduysa hücreleri gizle/ört
                                 val value = if (isPaused) 0 else boardState[row][col]
                                 TileBox(value = value)
                             }
@@ -162,61 +188,104 @@ fun GameScreen(modifier: Modifier = Modifier) {
                     }
                 }
 
-                // Durdurulduğunda tahtanın üzerine gelen "OYUN DURDURULDU" yazısı
                 if (isPaused) {
                     Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .background(Color(0xFF181A20).copy(alpha = 0.85f)),
+                        modifier = Modifier.fillMaxSize().background(Color(0xFF181A20).copy(alpha = 0.85f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = "PAUSE",
-                            fontSize = 32.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = Color.White
-                        )
+                        Text(text = "PAUSE", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     }
                 }
             }
         }
 
-        // Oyun Bitti Paneli (Overlay)
+        // Ayarlar Paneli (Popup / Modal)
+        if (showSettings) {
+            Box(
+                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier.width(300.dp).padding(16.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF2B2D37))
+                ) {
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(text = "AYARLARSS", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        // Ses Aç/Kapat Satırı
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Sesss", fontSize = 16.sp, color = Color.White)
+                            Switch(
+                                checked = soundEnabled,
+                                onCheckedChange = {
+                                    soundEnabled = it
+                                    soundManager.isSoundEnabled = it
+                                }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Titreşim Aç/Kapat Satırı
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Titreşimss", fontSize = 16.sp, color = Color.White)
+                            Switch(
+                                checked = vibrationEnabled,
+                                onCheckedChange = {
+                                    vibrationEnabled = it
+                                    soundManager.isVibrationEnabled = it
+                                }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        // Kapat Butonu
+                        Button(
+                            onClick = { showSettings = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8F7A66)),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(text = "Kapat", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        // Oyun Bitti Paneli
         if (isGameOver) {
             Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.75f)),
+                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.75f)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
                     modifier = Modifier.padding(24.dp)
                 ) {
-                    Text(
-                        text = "OYUN BİTTİ",
-                        fontSize = 36.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
+                    Text(text = "OYUN BİTTİ", fontSize = 36.sp, fontWeight = FontWeight.Bold, color = Color.White)
                     Spacer(modifier = Modifier.height(8.dp))
-                    Text(
-                        text = "Skorun: $currentScore",
-                        fontSize = 20.sp,
-                        color = Color(0xFFEEE4DA)
-                    )
+                    Text(text = "Skorun: $currentScore", fontSize = 20.sp, color = Color(0xFFEEE4DA))
                     Spacer(modifier = Modifier.height(24.dp))
                     Button(
                         onClick = { restartGame() },
                         colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8F7A66)),
                         shape = RoundedCornerShape(8.dp)
                     ) {
-                        Text(
-                            text = "Tekrar Başla",
-                            fontSize = 18.sp,
-                            color = Color.White,
-                            fontWeight = FontWeight.Bold
-                        )
+                        Text(text = "Tekrar Başla", fontSize = 18.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -227,14 +296,12 @@ fun GameScreen(modifier: Modifier = Modifier) {
 @Composable
 fun ScoreBox(title: String, value: String) {
     Box(
-        modifier = Modifier
-            .background(Color(0xFFBBADA0), RoundedCornerShape(6.dp))
-            .padding(horizontal = 12.dp, vertical = 8.dp),
+        modifier = Modifier.background(Color(0xFFBBADA0), RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = title, fontSize = 10.sp, color = Color(0xFFEEE4DA), fontWeight = FontWeight.Bold)
-            Text(text = value, fontSize = 18.sp, color = Color.White, fontWeight = FontWeight.Bold)
+            Text(text = title, fontSize = 9.sp, color = Color(0xFFEEE4DA), fontWeight = FontWeight.Bold)
+            Text(text = value, fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
         }
     }
 }
@@ -256,18 +323,11 @@ fun TileBox(value: Int) {
     val textColor = if (value <= 4 && value != 0) Color(0xFF776E65) else Color.White
 
     Box(
-        modifier = Modifier
-            .size(75.dp)
-            .background(backgroundColor, RoundedCornerShape(8.dp)),
+        modifier = Modifier.size(75.dp).background(backgroundColor, RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
         if (value > 0) {
-            Text(
-                text = value.toString(),
-                fontSize = if (value < 100) 28.sp else 24.sp,
-                fontWeight = FontWeight.Bold,
-                color = textColor
-            )
+            Text(text = value.toString(), fontSize = if (value < 100) 28.sp else 24.sp, fontWeight = FontWeight.Bold, color = textColor)
         }
     }
 }
