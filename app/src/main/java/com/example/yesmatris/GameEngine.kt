@@ -3,13 +3,12 @@ package com.example.yesmatris
 class GameEngine {
     var board = Array(4) { IntArray(4) { 0 } }
 
-    // Anlık skor değişkenimiz
     var score = 0
         private set
 
     fun resetBoard() {
         board = Array(4) { IntArray(4) { 0 } }
-        score = 0 // Yeni oyunda skor sıfırlanır
+        score = 0
         addRandomNumber()
         addRandomNumber()
     }
@@ -28,6 +27,27 @@ class GameEngine {
             val (row, col) = randomCell
             board[row][col] = if (Math.random() < 0.9) 2 else 4
         }
+    }
+
+    // Oyunun biter mi bitti mi kontrolünü yapan fonksiyon
+    fun isGameOver(): Boolean {
+        // 1. Hala boş hücre (0) varsa oyun bitmemiştir
+        for (i in 0 until 4) {
+            for (j in 0 until 4) {
+                if (board[i][j] == 0) return false
+            }
+        }
+
+        // 2. Yatayda veya dikeyde yan yana aynı sayı var mı kontrol et (hamle yapılabilir demektir)
+        for (i in 0 until 4) {
+            for (j in 0 until 3) {
+                if (board[i][j] == board[i][j + 1]) return false // Yatayda birleşme var
+                if (board[j][i] == board[j + 1][i]) return false // Dikeyde birleşme var
+            }
+        }
+
+        // Hiç boş yer yok ve birleşen sayı da kalmadıysa OYUN BİTTİ!
+        return true
     }
 
     fun swipeLeft() {
@@ -85,7 +105,7 @@ class GameEngine {
         while (i < nonZeroes.size - 1) {
             if (nonZeroes[i] == nonZeroes[i + 1]) {
                 nonZeroes[i] *= 2
-                score += nonZeroes[i] // Birleşen yeni değer skora ekleniyor!
+                score += nonZeroes[i]
                 nonZeroes.removeAt(i + 1)
             }
             i++
