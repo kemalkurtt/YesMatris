@@ -35,9 +35,9 @@ private val LightColorScheme = lightColorScheme(
 
 @Composable
 fun YesMatrisTheme(
-    darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    darkTheme: Boolean = isSystemInDarkTheme(), // Artık dışarıdan true/false alabilir
+    // Dynamic color'ı şimdilik false yapalım ki bizim belirlediğimiz renkler net çalışsın
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val colorScheme = when {

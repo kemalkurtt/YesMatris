@@ -28,9 +28,16 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            YesMatrisTheme {
+            // Gece modu durumunu en tepede tutuyoruz ki bütün uygulama haberdar olsun
+            var isDarkMode by remember { mutableStateOf(true) }
+
+            YesMatrisTheme(darkTheme = isDarkMode) {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    GameScreen(modifier = Modifier.padding(innerPadding))
+                    GameScreen(
+                        modifier = Modifier.padding(innerPadding),
+                        isDarkMode = isDarkMode,
+                        onThemeChanged = { isDarkMode = it }
+                    )
                 }
             }
         }
@@ -38,7 +45,11 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun GameScreen(modifier: Modifier = Modifier) {
+fun GameScreen(
+    modifier: Modifier = Modifier,
+    isDarkMode: Boolean,
+    onThemeChanged: (Boolean) -> Unit
+) {
     val context = LocalContext.current
     val scoreManager = remember { ScoreManager(context) }
     val soundManager = remember { SoundManager(context) }
@@ -51,7 +62,7 @@ fun GameScreen(modifier: Modifier = Modifier) {
     var currentScore by remember { mutableIntStateOf(0) }
     var isGameOver by remember { mutableStateOf(false) }
     var isPaused by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) } // Ayarlar penceresi açık mı?
+    var showSettings by remember { mutableStateOf(false) }
 
     // Ayarlar state'leri
     var soundEnabled by remember { mutableStateOf(true) }
@@ -75,7 +86,6 @@ fun GameScreen(modifier: Modifier = Modifier) {
         val oldBoard = engine.board.map { it.clone() }.toTypedArray()
         swipeAction()
 
-        // Tahtada değişiklik olduysa ses çal ve titre
         var changed = false
         for (r in 0 until 4) {
             for (c in 0 until 4) {
@@ -149,7 +159,7 @@ fun GameScreen(modifier: Modifier = Modifier) {
                         Text(text = if (isPaused) "DEVAMSS" else "MOLASS", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
                     }
 
-                    // Ayarlar Butonu (Dişli simgesi yerine şık bir metin/buton)
+                    // Ayarlar Butonu
                     Box(
                         modifier = Modifier
                             .background(Color(0xFF5B6770), RoundedCornerShape(8.dp))
@@ -248,6 +258,21 @@ fun GameScreen(modifier: Modifier = Modifier) {
                                     vibrationEnabled = it
                                     soundManager.isVibrationEnabled = it
                                 }
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
+
+                        // Gece Modu Aç/Kapat Satırı
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(text = "Gece Modusss", fontSize = 16.sp, color = Color.White)
+                            Switch(
+                                checked = isDarkMode,
+                                onCheckedChange = onThemeChanged
                             )
                         }
 
