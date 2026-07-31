@@ -193,7 +193,7 @@ fun GameScreen(
                 contentAlignment = Alignment.Center
             ) {
                 Text(
-                    text = "AYARLAR & MOLASS",
+                    text = "AYARLARSS & MOLASS",
                     fontSize = 14.sp,
                     color = Color.White,
                     fontWeight = FontWeight.Bold
