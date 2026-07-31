@@ -112,11 +112,14 @@ fun GameScreen(
         }
     }
 
+    // isDarkMode true ise koyu lacivert/siyah, false ise aydınlık/krem bir arkaplan olsun
+    val backgroundColor = if (isDarkMode) Color(0xFF181A20) else Color(0xFFFAF8EF)
+
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(Color(0xFF181A20))
-            .pointerInput(Unit) {
+            .background(backgroundColor) // Sabit renk yerine dinamik rengi verdik!
+            .pointerInput(Unit)  {
                 detectDragGestures(onDragEnd = {}) { change, dragAmount ->
                     if (!isGameOver && !isPaused && !showSettings) {
                         change.consume()
@@ -189,10 +192,14 @@ fun GameScreen(
             Spacer(modifier = Modifier.height(24.dp))
 
             // Oyun Tahtası
+            // isDarkMode true ise koyu gri, false ise 2048'in klasik tatlı kahverengi tahta rengi
+            val boardColor = if (isDarkMode) Color(0xFF2B2D37) else Color(0xFFBBADA0)
+
+            // Oyun Tahtası
             Box(
                 modifier = Modifier
                     .size(360.dp)
-                    .background(Color(0xFF2B2D37), RoundedCornerShape(12.dp))
+                    .background(boardColor, RoundedCornerShape(12.dp)) // Burayı da bağladık!
                     .padding(8.dp)
             ) {
                 Column(
