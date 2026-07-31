@@ -1,5 +1,9 @@
-<?xml version="1.0" encoding="utf-8"?>
-<resources>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <style name="Theme.YesMatris" parent="android:Theme.Material.Light.NoActionBar">
+        <!-- Senin mevcut ayarların burada duruyor... -->
 
-    <style name="Theme.YesMatris" parent="android:Theme.Material.Light.NoActionBar" />
+        <!-- ŞU İKİ SATIRI EKLE KANKA: -->
+        <item name="android:windowBackground">#181A20</item>
+        <item name="android:windowSplashScreenBackground" tools:targetApi="31">#181A20</item>
+    </style>
 </resources>

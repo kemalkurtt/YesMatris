@@ -4,6 +4,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -14,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -131,46 +133,58 @@ fun GameScreen(
             },
         contentAlignment = Alignment.Center
     ) {
+        // Üst Bar: Logo, Skorlar ve Altında Geniş Ayarlar/Mola Butonu
         Column(
+            modifier = Modifier.fillMaxWidth(0.85f),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
-            modifier = Modifier.fillMaxSize().padding(16.dp)
+            verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // Üst Bar: Skorlar, Pause ve Ayarlar Butonu
+
+          // --- KOCAMAN YES LOGOSU ---
+            androidx.compose.foundation.Image(
+                painter = androidx.compose.ui.res.painterResource(id = R.drawable.yesseffaf),
+                contentDescription = "YES Logo",
+                modifier = Modifier
+                    .fillMaxWidth(0.95f) // Ekranın %95'ini kaplasın
+                    .height(160.dp),     // Yüksekliği makul tutuyoruz ki aşağıyı itmesin
+                contentScale = androidx.compose.ui.layout.ContentScale.FillWidth // Enine tam yay diyoruz!
+            )
+
+            // 1. Satır: İki Kare Kutu (Skor ve Rekor)
             Row(
-                modifier = Modifier.fillMaxWidth(0.9f),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    ScoreBox(title = "SKORSS", value = currentScore.toString())
-                    ScoreBox(title = "REKORSS", value = highScore.toString())
-                }
-
-                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    // Pause Butonu
-                    Box(
-                        modifier = Modifier
-                            .background(Color(0xFF8F7A66), RoundedCornerShape(8.dp))
-                            .clickable { isPaused = !isPaused }
-                            .padding(horizontal = 10.dp, vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = if (isPaused) "DEVAMSS" else "MOLASS", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-
-                    // Ayarlar Butonu
-                    Box(
-                        modifier = Modifier
-                            .background(Color(0xFF5B6770), RoundedCornerShape(8.dp))
-                            .clickable { showSettings = true }
-                            .padding(horizontal = 10.dp, vertical = 10.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(text = "AYARLARSS", fontSize = 12.sp, color = Color.White, fontWeight = FontWeight.Bold)
-                    }
-                }
+                ScoreBoxSquare(
+                    title = "SKORSS",
+                    value = currentScore.toString(),
+                    modifier = Modifier.weight(1f)
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+                ScoreBoxSquare(
+                    title = "REKORSS",
+                    value = highScore.toString(),
+                    modifier = Modifier.weight(1f)
+                )
             }
+
+            // 2. Satır: Altındaki Uzun Ayarlar & Mola Butonu
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .background(Color(0xFF5B6770), RoundedCornerShape(10.dp))
+                    .clickable { showSettings = true },
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = "AYARLAR & MOLASS",
+                    fontSize = 14.sp,
+                    color = Color.White,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -319,14 +333,31 @@ fun GameScreen(
 }
 
 @Composable
-fun ScoreBox(title: String, value: String) {
+fun ScoreBoxSquare(title: String, value: String, modifier: Modifier = Modifier) {
     Box(
-        modifier = Modifier.background(Color(0xFFBBADA0), RoundedCornerShape(6.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
+        modifier = modifier
+            .height(70.dp) // Yüksekliği sabitleyip kare/dikdörtgen bir form veriyoruz
+            .background(Color(0xFFBBADA0), RoundedCornerShape(10.dp))
+            .padding(8.dp),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            Text(text = title, fontSize = 9.sp, color = Color(0xFFEEE4DA), fontWeight = FontWeight.Bold)
-            Text(text = value, fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = title,
+                fontSize = 11.sp,
+                color = Color(0xFFEEE4DA),
+                fontWeight = FontWeight.Bold
+            )
+            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = value,
+                fontSize = 20.sp,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
+            )
         }
     }
 }
@@ -347,12 +378,35 @@ fun TileBox(value: Int) {
 
     val textColor = if (value <= 4 && value != 0) Color(0xFF776E65) else Color.White
 
+    // --- ANİMASYON KISMI ---
+    // Değer her değiştiğinde (örneğin 2 iken 4 olduğunda) ölçek (scale) animasyonu tetiklenir
+    val scale by animateFloatAsState(
+        targetValue = if (value > 0) 1f else 0.8f,
+        animationSpec = androidx.compose.animation.core.spring(
+            dampingRatio = androidx.compose.animation.core.Spring.DampingRatioMediumBouncy,
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow
+        ),
+        label = "TileScaleAnimation"
+    )
+
     Box(
-        modifier = Modifier.size(75.dp).background(backgroundColor, RoundedCornerShape(8.dp)),
+        modifier = Modifier
+            .size(75.dp)
+            .background(backgroundColor, RoundedCornerShape(8.dp)),
         contentAlignment = Alignment.Center
     ) {
         if (value > 0) {
-            Text(text = value.toString(), fontSize = if (value < 100) 28.sp else 24.sp, fontWeight = FontWeight.Bold, color = textColor)
+            Text(
+                text = value.toString(),
+                fontSize = if (value < 100) 28.sp else 24.sp,
+                fontWeight = FontWeight.Bold,
+                color = textColor,
+                // Yazının boyutunu animasyonlu ölçeğe bağlıyoruz!
+                modifier = Modifier.graphicsLayer(
+                    scaleX = scale,
+                    scaleY = scale
+                )
+            )
         }
     }
 }
