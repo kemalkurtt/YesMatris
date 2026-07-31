@@ -30,16 +30,26 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            // Gece modu durumunu en tepede tutuyoruz ki bütün uygulama haberdar olsun
             var isDarkMode by remember { mutableStateOf(true) }
+            var showSplash by remember { mutableStateOf(true) }
+
+            // Süreyi 2.2 saniyeye çıkardık, hem emülatör rahat açsın hem de imzan net görünsün!
+            LaunchedEffect(Unit) {
+                kotlinx.coroutines.delay(2200)
+                showSplash = false
+            }
 
             YesMatrisTheme(darkTheme = isDarkMode) {
                 Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
-                    GameScreen(
-                        modifier = Modifier.padding(innerPadding),
-                        isDarkMode = isDarkMode,
-                        onThemeChanged = { isDarkMode = it }
-                    )
+                    if (showSplash) {
+                        SplashScreen(isDarkMode = isDarkMode)
+                    } else {
+                        GameScreen(
+                            modifier = Modifier.padding(innerPadding),
+                            isDarkMode = isDarkMode,
+                            onThemeChanged = { isDarkMode = it }
+                        )
+                    }
                 }
             }
         }
@@ -66,7 +76,6 @@ fun GameScreen(
     var isPaused by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
 
-    // Ayarlar state'leri
     var soundEnabled by remember { mutableStateOf(true) }
     var vibrationEnabled by remember { mutableStateOf(true) }
 
@@ -112,14 +121,17 @@ fun GameScreen(
         }
     }
 
-    // isDarkMode true ise koyu lacivert/siyah, false ise aydınlık/krem bir arkaplan olsun
+    // --- TEMAYA GÖRE DİNAMİK RENK PALETİ ---
     val backgroundColor = if (isDarkMode) Color(0xFF181A20) else Color(0xFFFAF8EF)
+    val boardColor = if (isDarkMode) Color(0xFF2B2D37) else Color(0xFFBBADA0)
+    val scoreBoxColor = if (isDarkMode) Color(0xFF2B2D37) else Color(0xFFBBADA0)
+    val buttonColor = if (isDarkMode) Color(0xFF5B6770) else Color(0xFF8F7A66)
 
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(backgroundColor) // Sabit renk yerine dinamik rengi verdik!
-            .pointerInput(Unit)  {
+            .background(backgroundColor)
+            .pointerInput(Unit) {
                 detectDragGestures(onDragEnd = {}) { change, dragAmount ->
                     if (!isGameOver && !isPaused && !showSettings) {
                         change.consume()
@@ -136,21 +148,19 @@ fun GameScreen(
             },
         contentAlignment = Alignment.Center
     ) {
-        // Üst Bar: Logo, Skorlar ve Altında Geniş Ayarlar/Mola Butonu
         Column(
-            modifier = Modifier.fillMaxWidth(0.85f),
+            modifier = Modifier.fillMaxWidth(0.88f),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-
-          // --- KOCAMAN YES LOGOSU ---
+            // --- DEVASA YES LOGOSU (OYUN EKRANI) ---
             androidx.compose.foundation.Image(
                 painter = androidx.compose.ui.res.painterResource(id = R.drawable.yesseffaf),
                 contentDescription = "YES Logo",
                 modifier = Modifier
-                    .fillMaxWidth(0.95f) // Ekranın %95'ini kaplasın
-                    .height(160.dp),     // Yüksekliği makul tutuyoruz ki aşağıyı itmesin
-                contentScale = androidx.compose.ui.layout.ContentScale.FillWidth // Enine tam yay diyoruz!
+                    .fillMaxWidth(0.95f) // Genişliği ekrana sonuna kadar yay!
+                    .height(130.dp),     // Aşağıdaki kutuları itmeyecek ideal yükseklik
+                contentScale = androidx.compose.ui.layout.ContentScale.FillWidth // Boşluk dinleme, enine büyüt!
             )
 
             // 1. Satır: İki Kare Kutu (Skor ve Rekor)
@@ -161,12 +171,14 @@ fun GameScreen(
                 ScoreBoxSquare(
                     title = "SKORSS",
                     value = currentScore.toString(),
+                    boxColor = scoreBoxColor,
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(modifier = Modifier.width(12.dp))
                 ScoreBoxSquare(
                     title = "REKORSS",
                     value = highScore.toString(),
+                    boxColor = scoreBoxColor,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -175,8 +187,8 @@ fun GameScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(44.dp)
-                    .background(Color(0xFF5B6770), RoundedCornerShape(10.dp))
+                    .height(46.dp)
+                    .background(buttonColor, RoundedCornerShape(10.dp))
                     .clickable { showSettings = true },
                 contentAlignment = Alignment.Center
             ) {
@@ -188,18 +200,13 @@ fun GameScreen(
                 )
             }
 
-
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Oyun Tahtası
-            // isDarkMode true ise koyu gri, false ise 2048'in klasik tatlı kahverengi tahta rengi
-            val boardColor = if (isDarkMode) Color(0xFF2B2D37) else Color(0xFFBBADA0)
+            Spacer(modifier = Modifier.height(16.dp))
 
             // Oyun Tahtası
             Box(
                 modifier = Modifier
-                    .size(360.dp)
-                    .background(boardColor, RoundedCornerShape(12.dp)) // Burayı da bağladık!
+                    .size(350.dp)
+                    .background(boardColor, RoundedCornerShape(12.dp))
                     .padding(8.dp)
             ) {
                 Column(
@@ -213,7 +220,7 @@ fun GameScreen(
                         ) {
                             for (col in 0 until 4) {
                                 val value = if (isPaused) 0 else boardState[row][col]
-                                TileBox(value = value)
+                                TileBox(value = value, isDarkMode = isDarkMode)
                             }
                         }
                     }
@@ -221,40 +228,59 @@ fun GameScreen(
 
                 if (isPaused) {
                     Box(
-                        modifier = Modifier.fillMaxSize().background(Color(0xFF181A20).copy(alpha = 0.85f)),
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(backgroundColor.copy(alpha = 0.85f)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(text = "PAUSE", fontSize = 32.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(
+                            text = "PAUSE",
+                            fontSize = 32.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (isDarkMode) Color.White else Color(0xFF776E65)
+                        )
                     }
                 }
             }
         }
 
-        // Ayarlar Paneli (Popup / Modal)
+        // --- AYARLAR PANELİ (POPUP) ---
         if (showSettings) {
             Box(
-                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.8f)),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.75f)),
                 contentAlignment = Alignment.Center
             ) {
                 Card(
-                    modifier = Modifier.width(300.dp).padding(16.dp),
+                    modifier = Modifier
+                        .width(300.dp)
+                        .padding(16.dp),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF2B2D37))
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF2B2D37) else Color(0xFFFAF8EF)
+                    )
                 ) {
+                    val popupTextColor = if (isDarkMode) Color.White else Color(0xFF776E65)
+
                     Column(
                         modifier = Modifier.padding(20.dp),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        Text(text = "AYARLARSS", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = Color.White)
+                        Text(
+                            text = "AYARLARSS",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = popupTextColor
+                        )
                         Spacer(modifier = Modifier.height(20.dp))
 
-                        // Ses Aç/Kapat Satırı
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = "Sesss", fontSize = 16.sp, color = Color.White)
+                            Text(text = "Sesss", fontSize = 16.sp, color = popupTextColor)
                             Switch(
                                 checked = soundEnabled,
                                 onCheckedChange = {
@@ -266,13 +292,12 @@ fun GameScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Titreşim Aç/Kapat Satırı
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = "Titreşimss", fontSize = 16.sp, color = Color.White)
+                            Text(text = "Titreşimss", fontSize = 16.sp, color = popupTextColor)
                             Switch(
                                 checked = vibrationEnabled,
                                 onCheckedChange = {
@@ -284,13 +309,12 @@ fun GameScreen(
 
                         Spacer(modifier = Modifier.height(12.dp))
 
-                        // Gece Modu Aç/Kapat Satırı
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = "Gece Modusss", fontSize = 16.sp, color = Color.White)
+                            Text(text = "Gece Modusss", fontSize = 16.sp, color = popupTextColor)
                             Switch(
                                 checked = isDarkMode,
                                 onCheckedChange = onThemeChanged
@@ -299,10 +323,9 @@ fun GameScreen(
 
                         Spacer(modifier = Modifier.height(24.dp))
 
-                        // Kapat Butonu
                         Button(
                             onClick = { showSettings = false },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8F7A66)),
+                            colors = ButtonDefaults.buttonColors(containerColor = buttonColor),
                             shape = RoundedCornerShape(8.dp)
                         ) {
                             Text(text = "Kapat", color = Color.White, fontWeight = FontWeight.Bold)
@@ -312,10 +335,12 @@ fun GameScreen(
             }
         }
 
-        // Oyun Bitti Paneli
+        // --- OYUN BİTTİ PANELİ ---
         if (isGameOver) {
             Box(
-                modifier = Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.75f)),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.75f)),
                 contentAlignment = Alignment.Center
             ) {
                 Column(
@@ -328,7 +353,7 @@ fun GameScreen(
                     Spacer(modifier = Modifier.height(24.dp))
                     Button(
                         onClick = { restartGame() },
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF8F7A66)),
+                        colors = ButtonDefaults.buttonColors(containerColor = buttonColor),
                         shape = RoundedCornerShape(8.dp)
                     ) {
                         Text(text = "Tekrar Başla", fontSize = 18.sp, color = Color.White, fontWeight = FontWeight.Bold)
@@ -340,11 +365,16 @@ fun GameScreen(
 }
 
 @Composable
-fun ScoreBoxSquare(title: String, value: String, modifier: Modifier = Modifier) {
+fun ScoreBoxSquare(
+    title: String,
+    value: String,
+    boxColor: Color,
+    modifier: Modifier = Modifier
+) {
     Box(
         modifier = modifier
-            .height(70.dp) // Yüksekliği sabitleyip kare/dikdörtgen bir form veriyoruz
-            .background(Color(0xFFBBADA0), RoundedCornerShape(10.dp))
+            .height(70.dp)
+            .background(boxColor, RoundedCornerShape(10.dp))
             .padding(8.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -370,7 +400,10 @@ fun ScoreBoxSquare(title: String, value: String, modifier: Modifier = Modifier) 
 }
 
 @Composable
-fun TileBox(value: Int) {
+fun TileBox(value: Int, isDarkMode: Boolean) {
+    // Gece modu açıksa boş kutular koyu gri, kapalıysa 2048'in klasik krem-gri tonu olsun
+    val emptyColor = if (isDarkMode) Color(0xFF3C3F41) else Color(0xFFCDC1B4)
+
     val backgroundColor = when (value) {
         2 -> Color(0xFFEEE4DA)
         4 -> Color(0xFFEDE0C8)
@@ -380,13 +413,11 @@ fun TileBox(value: Int) {
         64 -> Color(0xFFF65E3B)
         128 -> Color(0xFFEDCF72)
         256 -> Color(0xFFEDCC61)
-        else -> Color(0xFF3C3F41)
+        else -> emptyColor
     }
 
     val textColor = if (value <= 4 && value != 0) Color(0xFF776E65) else Color.White
 
-    // --- ANİMASYON KISMI ---
-    // Değer her değiştiğinde (örneğin 2 iken 4 olduğunda) ölçek (scale) animasyonu tetiklenir
     val scale by animateFloatAsState(
         targetValue = if (value > 0) 1f else 0.8f,
         animationSpec = androidx.compose.animation.core.spring(
@@ -408,11 +439,48 @@ fun TileBox(value: Int) {
                 fontSize = if (value < 100) 28.sp else 24.sp,
                 fontWeight = FontWeight.Bold,
                 color = textColor,
-                // Yazının boyutunu animasyonlu ölçeğe bağlıyoruz!
                 modifier = Modifier.graphicsLayer(
                     scaleX = scale,
                     scaleY = scale
                 )
+            )
+        }
+    }
+}
+
+@Composable
+fun SplashScreen(isDarkMode: Boolean) {
+    val backgroundColor = if (isDarkMode) Color(0xFF181A20) else Color(0xFFFAF8EF)
+    val textColor = if (isDarkMode) Color(0xFF776E65) else Color(0xFF9E948A)
+
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(backgroundColor),
+        contentAlignment = Alignment.Center
+    ) {
+        // --- DEVASA AÇILIŞ LOGOSU ---
+        androidx.compose.foundation.Image(
+            painter = androidx.compose.ui.res.painterResource(id = R.drawable.yesmatrisseffaf),
+            contentDescription = "YES Logo",
+            modifier = Modifier
+                .fillMaxWidth(1f)   // Ekran genişliğinin %100'ünü kullansın, boşluk kalmasın
+                .height(260.dp),    // Yüksekliği 180'den 260'a fırlattık!
+            contentScale = androidx.compose.ui.layout.ContentScale.FillWidth // Enine tam yay!
+        )
+
+        // --- İMZAN ---
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 36.dp),
+            contentAlignment = Alignment.BottomCenter
+        ) {
+            Text(
+                text = "powered by KEMAL KURT",
+                fontSize = 15.sp,
+                color = textColor,
+                fontWeight = FontWeight.Bold
             )
         }
     }
