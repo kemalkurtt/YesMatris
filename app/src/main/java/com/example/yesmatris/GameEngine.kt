@@ -1,14 +1,22 @@
 package com.example.yesmatris
 
+// 1. Taşlara kimlik kazandıran sınıfımız. Compose artık taşları bu ID ile takip edecek!
+data class Tile(val id: Int, var value: Int)
+
 class GameEngine {
-    var board = Array(4) { IntArray(4) { 0 } }
+    // 2. IntArray yerine artık içinde kimlikli Tile nesneleri tutan bir matris kullanıyoruz
+    var board = Array(4) { Array<Tile?>(4) { null } }
 
     var score = 0
         private set
 
+    // Her yeni oluşan taşa benzersiz bir kimlik vereceğiz
+    private var nextId = 1
+
     fun resetBoard() {
-        board = Array(4) { IntArray(4) { 0 } }
+        board = Array(4) { Array<Tile?>(4) { null } }
         score = 0
+        nextId = 1
         addRandomNumber()
         addRandomNumber()
     }
@@ -17,7 +25,7 @@ class GameEngine {
         val emptyCells = mutableListOf<Pair<Int, Int>>()
         for (i in 0 until 4) {
             for (j in 0 until 4) {
-                if (board[i][j] == 0) {
+                if (board[i][j] == null) {
                     emptyCells.add(Pair(i, j))
                 }
             }
@@ -25,32 +33,29 @@ class GameEngine {
         if (emptyCells.isNotEmpty()) {
             val randomCell = emptyCells.random()
             val (row, col) = randomCell
-            board[row][col] = if (Math.random() < 0.9) 2 else 4
+            val value = if (Math.random() < 0.9) 2 else 4
+            // Yeni taşa sıradaki ID'yi veriyoruz
+            board[row][col] = Tile(id = nextId++, value = value)
         }
     }
 
-    // Oyunun biter mi bitti mi kontrolünü yapan fonksiyon
     fun isGameOver(): Boolean {
-        // 1. Hala boş hücre (0) varsa oyun bitmemiştir
         for (i in 0 until 4) {
             for (j in 0 until 4) {
-                if (board[i][j] == 0) return false
+                if (board[i][j] == null) return false
             }
         }
 
-        // 2. Yatayda veya dikeyde yan yana aynı sayı var mı kontrol et (hamle yapılabilir demektir)
         for (i in 0 until 4) {
             for (j in 0 until 3) {
-                if (board[i][j] == board[i][j + 1]) return false // Yatayda birleşme var
-                if (board[j][i] == board[j + 1][i]) return false // Dikeyde birleşme var
+                if (board[i][j]?.value == board[i][j + 1]?.value) return false
+                if (board[j][i]?.value == board[j + 1][i]?.value) return false
             }
         }
-
-        // Hiç boş yer yok ve birleşen sayı da kalmadıysa OYUN BİTTİ!
         return true
     }
 
-    fun swipeLeft() {
+    fun swipeLeft(): Boolean {
         var moved = false
         for (i in 0 until 4) {
             val originalRow = board[i].clone()
@@ -58,9 +63,10 @@ class GameEngine {
             if (!originalRow.contentEquals(board[i])) moved = true
         }
         if (moved) addRandomNumber()
+        return moved
     }
 
-    fun swipeRight() {
+    fun swipeRight(): Boolean {
         var moved = false
         for (i in 0 until 4) {
             val originalRow = board[i].clone()
@@ -69,26 +75,24 @@ class GameEngine {
             board[i] = mergedRow
             if (!originalRow.contentEquals(board[i])) moved = true
         }
-        if (moved) addRandomNumber()
+        return moved
     }
-
-    fun swipeUp() {
+    fun swipeUp(): Boolean {
         var moved = false
         for (col in 0 until 4) {
-            val originalCol = IntArray(4) { row -> board[row][col] }
+            val originalCol = Array<Tile?>(4) { row -> board[row][col] }
             val mergedCol = slideAndMergeRow(originalCol)
             for (row in 0 until 4) {
                 if (board[row][col] != mergedCol[row]) moved = true
                 board[row][col] = mergedCol[row]
             }
         }
-        if (moved) addRandomNumber()
+        return moved
     }
-
-    fun swipeDown() {
+    fun swipeDown(): Boolean {
         var moved = false
         for (col in 0 until 4) {
-            val originalCol = IntArray(4) { row -> board[row][col] }
+            val originalCol = Array<Tile?>(4) { row -> board[row][col] }
             val reversedCol = originalCol.reversedArray()
             val mergedCol = slideAndMergeRow(reversedCol).reversedArray()
             for (row in 0 until 4) {
@@ -96,23 +100,24 @@ class GameEngine {
                 board[row][col] = mergedCol[row]
             }
         }
-        if (moved) addRandomNumber()
-    }
+        return moved    }
 
-    private fun slideAndMergeRow(row: IntArray): IntArray {
-        val nonZeroes = row.filter { it != 0 }.toMutableList()
+    private fun slideAndMergeRow(row: Array<Tile?>): Array<Tile?> {
+        val nonNulls = row.filterNotNull().toMutableList()
         var i = 0
-        while (i < nonZeroes.size - 1) {
-            if (nonZeroes[i] == nonZeroes[i + 1]) {
-                nonZeroes[i] *= 2
-                score += nonZeroes[i]
-                nonZeroes.removeAt(i + 1)
+        while (i < nonNulls.size - 1) {
+            if (nonNulls[i].value == nonNulls[i + 1].value) {
+                // Çarpışan iki taştan ilkini koruyup sadece değerini güncelliyoruz.
+                // Bu sayede Compose taşı yok etmek yerine kaydırıp sayısını artırıyor!
+                nonNulls[i].value *= 2
+                score += nonNulls[i].value
+                nonNulls.removeAt(i + 1)
             }
             i++
         }
-        val result = IntArray(4) { 0 }
-        for (j in nonZeroes.indices) {
-            result[j] = nonZeroes[j]
+        val result = Array<Tile?>(4) { null }
+        for (j in nonNulls.indices) {
+            result[j] = nonNulls[j]
         }
         return result
     }

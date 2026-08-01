@@ -4,7 +4,10 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -33,7 +36,6 @@ class MainActivity : ComponentActivity() {
             var isDarkMode by remember { mutableStateOf(true) }
             var showSplash by remember { mutableStateOf(true) }
 
-            // Süreyi 2.2 saniyeye çıkardık, hem emülatör rahat açsın hem de imzan net görünsün!
             LaunchedEffect(Unit) {
                 kotlinx.coroutines.delay(2200)
                 showSplash = false
@@ -70,7 +72,9 @@ fun GameScreen(
     val highScore by scoreManager.highScoreFlow.collectAsState(initial = 0)
 
     val engine = remember { GameEngine() }
-    var boardState by remember { mutableStateOf(Array(4) { IntArray(4) { 0 } }) }
+
+    var boardState by remember { mutableStateOf(Array(4) { Array<Tile?>(4) { null } }) }
+    var isAnimating by remember { mutableStateOf(false) }
     var currentScore by remember { mutableIntStateOf(0) }
     var isGameOver by remember { mutableStateOf(false) }
     var isPaused by remember { mutableStateOf(false) }
@@ -81,7 +85,7 @@ fun GameScreen(
 
     fun restartGame() {
         engine.resetBoard()
-        boardState = engine.board.map { it.clone() }.toTypedArray()
+        boardState = engine.board.map { row -> row.map { it?.copy() }.toTypedArray() }.toTypedArray()
         currentScore = engine.score
         isGameOver = false
         isPaused = false
@@ -91,16 +95,27 @@ fun GameScreen(
         restartGame()
     }
 
-    fun handleMove(swipeAction: () -> Unit) {
-        if (isGameOver || isPaused) return
+    fun handleMove(swipeAction: () -> Boolean) {
+        if (isGameOver || isPaused || isAnimating) return
 
-        val oldBoard = engine.board.map { it.clone() }.toTypedArray()
-        swipeAction()
+        isAnimating = true
+
+        val oldBoard = engine.board.map { row ->
+            row.map { it?.copy() }.toTypedArray()
+        }.toTypedArray()
+
+        val moved = swipeAction()
+
+        if (!moved) {
+            isAnimating = false
+            return
+        }
 
         var changed = false
         for (r in 0 until 4) {
             for (c in 0 until 4) {
-                if (oldBoard[r][c] != engine.board[r][c]) changed = true
+                if (oldBoard[r][c]?.value != engine.board[r][c]?.value)
+                    changed = true
             }
         }
 
@@ -109,19 +124,40 @@ fun GameScreen(
             soundManager.vibrate()
         }
 
-        boardState = engine.board.map { it.clone() }.toTypedArray()
+        boardState = engine.board.map { row ->
+            row.map { it?.copy() }.toTypedArray()
+        }.toTypedArray()
+
         currentScore = engine.score
 
         coroutineScope.launch {
             scoreManager.saveHighScore(currentScore)
         }
+        coroutineScope.launch {
+            kotlinx.coroutines.delay(250)
 
-        if (engine.isGameOver()) {
-            isGameOver = true
+            engine.addRandomNumber()
+
+            boardState = engine.board.map { row ->
+                row.map { it?.copy() }.toTypedArray()
+            }.toTypedArray()
+
+            currentScore = engine.score
+
+            if (engine.isGameOver()) {
+                isGameOver = true
+            }
+
+            kotlinx.coroutines.delay(300)
+            isAnimating = false
+        }
+
+        coroutineScope.launch {
+            kotlinx.coroutines.delay(550)
+            isAnimating = false
         }
     }
 
-    // --- TEMAYA GÖRE DİNAMİK RENK PALETİ ---
     val backgroundColor = if (isDarkMode) Color(0xFF181A20) else Color(0xFFFAF8EF)
     val boardColor = if (isDarkMode) Color(0xFF2B2D37) else Color(0xFFBBADA0)
     val scoreBoxColor = if (isDarkMode) Color(0xFF2B2D37) else Color(0xFFBBADA0)
@@ -153,17 +189,15 @@ fun GameScreen(
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp)
         ) {
-            // --- DEVASA YES LOGOSU (OYUN EKRANI) ---
             androidx.compose.foundation.Image(
                 painter = androidx.compose.ui.res.painterResource(id = R.drawable.yesseffaf),
                 contentDescription = "YES Logo",
                 modifier = Modifier
-                    .fillMaxWidth(0.95f) // Genişliği ekrana sonuna kadar yay!
-                    .height(130.dp),     // Aşağıdaki kutuları itmeyecek ideal yükseklik
-                contentScale = androidx.compose.ui.layout.ContentScale.FillWidth // Boşluk dinleme, enine büyüt!
+                    .fillMaxWidth(0.95f)
+                    .height(130.dp),
+                contentScale = androidx.compose.ui.layout.ContentScale.FillWidth
             )
 
-            // 1. Satır: İki Kare Kutu (Skor ve Rekor)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -183,7 +217,6 @@ fun GameScreen(
                 )
             }
 
-            // 2. Satır: Altındaki Uzun Ayarlar & Mola Butonu
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -202,7 +235,6 @@ fun GameScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            // Oyun Tahtası
             Box(
                 modifier = Modifier
                     .size(350.dp)
@@ -219,8 +251,50 @@ fun GameScreen(
                             horizontalArrangement = Arrangement.SpaceAround
                         ) {
                             for (col in 0 until 4) {
-                                val value = if (isPaused) 0 else boardState[row][col]
-                                TileBox(value = value, isDarkMode = isDarkMode)
+                                TileBox(value = 0, isDarkMode = isDarkMode)
+                            }
+                        }
+                    }
+                }
+
+                // 2. KATMAN: Kayan ve Hareketli Bloklar
+                if (!isPaused) {
+                    val activeTiles = mutableListOf<Triple<Tile, Int, Int>>()
+                    for (r in 0 until 4) {
+                        for (c in 0 until 4) {
+                            val tile = boardState[r][c]
+                            if (tile != null) {
+                                activeTiles.add(Triple(tile, r, c))
+                            }
+                        }
+                    }
+
+                    activeTiles.sortBy { it.first.id }
+
+                    for (item in activeTiles) {
+                        val tile = item.first
+                        val row = item.second
+                        val col = item.third
+
+                        key(tile.id) {
+                            val targetX = (col * 83.5f + 4.25f).dp
+                            val targetY = (row * 83.5f + 4.25f).dp
+
+                            val animatedX by animateDpAsState(
+                                targetValue = targetX,
+                                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                                label = "x_kayma_${tile.id}"
+                            )
+                            val animatedY by animateDpAsState(
+                                targetValue = targetY,
+                                animationSpec = tween(durationMillis = 200, easing = FastOutSlowInEasing),
+                                label = "y_kayma_${tile.id}"
+                            )
+
+                            Box(
+                                modifier = Modifier.offset(x = animatedX, y = animatedY)
+                            ) {
+                                TileBox(value = tile.value, isDarkMode = isDarkMode)
                             }
                         }
                     }
@@ -241,10 +315,9 @@ fun GameScreen(
                         )
                     }
                 }
-            }
+            } // Bu parantezi silmiştin, geri eklendi :)
         }
 
-        // --- AYARLAR PANELİ (POPUP) ---
         if (showSettings) {
             Box(
                 modifier = Modifier
@@ -335,7 +408,6 @@ fun GameScreen(
             }
         }
 
-        // --- OYUN BİTTİ PANELİ ---
         if (isGameOver) {
             Box(
                 modifier = Modifier
@@ -401,7 +473,6 @@ fun ScoreBoxSquare(
 
 @Composable
 fun TileBox(value: Int, isDarkMode: Boolean) {
-    // Gece modu açıksa boş kutular koyu gri, kapalıysa 2048'in klasik krem-gri tonu olsun
     val emptyColor = if (isDarkMode) Color(0xFF3C3F41) else Color(0xFFCDC1B4)
 
     val backgroundColor = when (value) {
@@ -459,17 +530,15 @@ fun SplashScreen(isDarkMode: Boolean) {
             .background(backgroundColor),
         contentAlignment = Alignment.Center
     ) {
-        // --- DEVASA AÇILIŞ LOGOSU ---
         androidx.compose.foundation.Image(
             painter = androidx.compose.ui.res.painterResource(id = R.drawable.yesmatrisseffaf),
             contentDescription = "YES Logo",
             modifier = Modifier
-                .fillMaxWidth(1f)   // Ekran genişliğinin %100'ünü kullansın, boşluk kalmasın
-                .height(260.dp),    // Yüksekliği 180'den 260'a fırlattık!
-            contentScale = androidx.compose.ui.layout.ContentScale.FillWidth // Enine tam yay!
+                .fillMaxWidth(1f)
+                .height(260.dp),
+            contentScale = androidx.compose.ui.layout.ContentScale.FillWidth
         )
 
-        // --- İMZAN ---
         Box(
             modifier = Modifier
                 .fillMaxSize()
