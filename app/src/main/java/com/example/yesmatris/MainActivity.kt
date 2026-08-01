@@ -202,22 +202,46 @@ fun GameScreen(
             .fillMaxSize()
             .background(backgroundColor)
             .pointerInput(Unit) {
-                detectDragGestures(onDragEnd = {}) { change, dragAmount ->
+                // Değişkenleri buraya alıyoruz ki hafızada sağlam dursun
+                var dragOffsetX = 0f
+                var dragOffsetY = 0f
+
+                detectDragGestures(
+                    onDragStart = {
+                        // Parmağı ekrana koyduğunda mesafeleri sıfırla
+                        dragOffsetX = 0f
+                        dragOffsetY = 0f
+                    },
+                    onDragEnd = {
+                        dragOffsetX = 0f
+                        dragOffsetY = 0f
+                    }
+                ) { change, dragAmount ->
                     if (!isGameOver && !isPaused && !showSettings) {
                         change.consume()
-                        val (x, y) = dragAmount
-                        if (abs(x) > abs(y)) {
-                            if (x > 50) handleMove { engine.swipeRight() }
-                            else if (x < -50) handleMove { engine.swipeLeft() }
-                        } else {
-                            if (y > 50) handleMove { engine.swipeDown() }
-                            else if (y < -50) handleMove { engine.swipeUp() }
+                        // Her frame'deki hareketi toplayarak biriktiriyoruz
+                        dragOffsetX += dragAmount.x
+                        dragOffsetY += dragAmount.y
+
+                        // Toplam hareket 60 pikseli geçtiği an tetikle
+                        if (abs(dragOffsetX) > 60 || abs(dragOffsetY) > 60) {
+                            if (abs(dragOffsetX) > abs(dragOffsetY)) {
+                                if (dragOffsetX > 0) handleMove { engine.swipeRight() }
+                                else handleMove { engine.swipeLeft() }
+                            } else {
+                                if (dragOffsetY > 0) handleMove { engine.swipeDown() }
+                                else handleMove { engine.swipeUp() }
+                            }
+                            // Tetiklendikten sonra sıfırlıyoruz ki tek kaydırmada 2 kez oynamasın
+                            dragOffsetX = 0f
+                            dragOffsetY = 0f
                         }
                     }
                 }
             },
         contentAlignment = Alignment.Center
     ) {
+
         Column(
             modifier = Modifier.fillMaxWidth(0.88f),
             horizontalAlignment = Alignment.CenterHorizontally,
