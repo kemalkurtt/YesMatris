@@ -69,30 +69,46 @@ fun GameScreen(
     val soundManager = remember { SoundManager(context) }
     val coroutineScope = rememberCoroutineScope()
 
+    var showHowToPlay by remember { mutableStateOf(false) }
     val highScore by scoreManager.highScoreFlow.collectAsState(initial = 0)
 
     val engine = remember { GameEngine() }
-
+    var hasRecordBrokenThisGame by remember { mutableStateOf(false) }
     var boardState by remember { mutableStateOf(Array(4) { Array<Tile?>(4) { null } }) }
     var isAnimating by remember { mutableStateOf(false) }
     var currentScore by remember { mutableIntStateOf(0) }
     var isGameOver by remember { mutableStateOf(false) }
     var isPaused by remember { mutableStateOf(false) }
     var showSettings by remember { mutableStateOf(false) }
+    var showAdDialog by remember { mutableStateOf(false) }
+    var isWatchingAd by remember { mutableStateOf(false) }
+    var undoStepsCount by remember { mutableIntStateOf(1) }
 
     var soundEnabled by remember { mutableStateOf(true) }
     var vibrationEnabled by remember { mutableStateOf(true) }
 
     fun restartGame() {
         engine.resetBoard()
+        scoreManager.clearGameState() // YENİ: Eski oyunun kaydını sil!
+        hasRecordBrokenThisGame = false
         boardState = engine.board.map { row -> row.map { it?.copy() }.toTypedArray() }.toTypedArray()
         currentScore = engine.score
         isGameOver = false
         isPaused = false
     }
 
+    // YENİ: Oyun açıldığında kaydı yükleyen kısım buraya geldi!
     LaunchedEffect(Unit) {
-        restartGame()
+        val savedBoard = scoreManager.getSavedBoard()
+        if (savedBoard != null && savedBoard.isNotBlank()) {
+            val savedScore = scoreManager.getSavedScore()
+            engine.loadState(savedScore, savedBoard)
+            boardState = engine.board.map { row -> row.map { it?.copy() }.toTypedArray() }.toTypedArray()
+            currentScore = engine.score
+            isGameOver = engine.isGameOver()
+        } else {
+            restartGame()
+        }
     }
 
     fun handleMove(swipeAction: () -> Boolean) {
@@ -104,12 +120,17 @@ fun GameScreen(
             row.map { it?.copy() }.toTypedArray()
         }.toTypedArray()
 
+        val oldScore = engine.score
+
         val moved = swipeAction()
 
         if (!moved) {
             isAnimating = false
             return
         }
+
+        // Hamle başarılıysa eski durumu hafızaya kaydet
+        engine.saveState(oldBoard, oldScore)
 
         var changed = false
         for (r in 0 until 4) {
@@ -119,8 +140,18 @@ fun GameScreen(
             }
         }
 
+        val newScore = engine.score
+
         if (changed) {
-            soundManager.playPopSound()
+            if (highScore > 0 && newScore > highScore && !hasRecordBrokenThisGame) {
+                soundManager.playRecordSound()
+                hasRecordBrokenThisGame = true
+            } else if (newScore > oldScore) {
+                soundManager.playMergeSound()
+            } else {
+                soundManager.playPopSound()
+            }
+
             soundManager.vibrate()
         }
 
@@ -147,6 +178,9 @@ fun GameScreen(
             if (engine.isGameOver()) {
                 isGameOver = true
             }
+
+            // YENİ: Hamle bittikten sonra mevcut tahtayı cihaza kaydet!
+            scoreManager.saveGameState(currentScore, engine.getBoardAsString())
 
             kotlinx.coroutines.delay(300)
             isAnimating = false
@@ -198,6 +232,31 @@ fun GameScreen(
                 contentScale = androidx.compose.ui.layout.ContentScale.FillWidth
             )
 
+            // GERİ AL BUTONU (Sadece geçmişte hamle varsa görünür)
+            if (engine.canUndo()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .background(Color(0xFFE94560), RoundedCornerShape(8.dp))
+                            .clickable {
+                                undoStepsCount = 1
+                                showAdDialog = true
+                            }
+                            .padding(horizontal = 12.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = "⏪ Geri Al (Reklam)",
+                            color = Color.White,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -217,20 +276,44 @@ fun GameScreen(
                 )
             }
 
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(46.dp)
-                    .background(buttonColor, RoundedCornerShape(10.dp))
-                    .clickable { showSettings = true },
-                contentAlignment = Alignment.Center
+            // Ayarlar ve Nasıl Oynanır Butonları
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = "AYARLARSS & MOLASS",
-                    fontSize = 14.sp,
-                    color = Color.White,
-                    fontWeight = FontWeight.Bold
-                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp)
+                        .background(buttonColor, RoundedCornerShape(10.dp))
+                        .clickable { showSettings = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "AYARLARSS",
+                        fontSize = 14.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(12.dp))
+
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(46.dp)
+                        .background(buttonColor, RoundedCornerShape(10.dp))
+                        .clickable { showHowToPlay = true },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = "NASILSS OYNANIRSS?",
+                        fontSize = 14.sp,
+                        color = Color.White,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -257,7 +340,6 @@ fun GameScreen(
                     }
                 }
 
-                // 2. KATMAN: Kayan ve Hareketli Bloklar
                 if (!isPaused) {
                     val activeTiles = mutableListOf<Triple<Tile, Int, Int>>()
                     for (r in 0 until 4) {
@@ -315,7 +397,7 @@ fun GameScreen(
                         )
                     }
                 }
-            } // Bu parantezi silmiştin, geri eklendi :)
+            }
         }
 
         if (showSettings) {
@@ -423,12 +505,148 @@ fun GameScreen(
                     Spacer(modifier = Modifier.height(8.dp))
                     Text(text = "Skorun: $currentScore", fontSize = 20.sp, color = Color(0xFFEEE4DA))
                     Spacer(modifier = Modifier.height(24.dp))
+
                     Button(
                         onClick = { restartGame() },
                         colors = ButtonDefaults.buttonColors(containerColor = buttonColor),
-                        shape = RoundedCornerShape(8.dp)
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier.fillMaxWidth(0.7f)
                     ) {
                         Text(text = "Tekrar Başla", fontSize = 18.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                    }
+
+                    if (engine.canUndo()) {
+                        Spacer(modifier = Modifier.height(12.dp))
+                        Button(
+                            onClick = {
+                                undoStepsCount = 5
+                                showAdDialog = true
+                            },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE94560)),
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier.fillMaxWidth(0.7f)
+                        ) {
+                            Text(text = "🎥 Reklam İzle & Kurtul", fontSize = 16.sp, color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showHowToPlay) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.75f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    modifier = Modifier
+                        .width(320.dp)
+                        .padding(16.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = if (isDarkMode) Color(0xFF2B2D37) else Color(0xFFFAF8EF)
+                    )
+                ) {
+                    val popupTextColor = if (isDarkMode) Color.White else Color(0xFF776E65)
+
+                    Column(
+                        modifier = Modifier.padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        Text(
+                            text = "NASIL OYNANIR?",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = popupTextColor
+                        )
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Text(
+                            text = "👉 Taşları hareket ettirmek için ekranı sağa, sola, yukarı veya aşağı kaydır.\n\n" +
+                                    "💥 Aynı sayıya sahip iki taş çarpıştığında birleşerek iki katı değere ulaşır! (Örn: 2+2=4)\n\n" +
+                                    "🎲 Her hamlede tahtaya rastgele '2' veya '4' değerinde yeni bir taş eklenir.\n\n" +
+                                    "🚫 Tahta tamamen dolar ve hamle yapacak yer kalmazsa oyun biter.",
+                            fontSize = 15.sp,
+                            color = popupTextColor,
+                            lineHeight = 22.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(24.dp))
+
+                        Button(
+                            onClick = { showHowToPlay = false },
+                            colors = ButtonDefaults.buttonColors(containerColor = buttonColor),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Text(text = "Anladımss, Oynayalımss!", color = Color.White, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
+        }
+
+        if (showAdDialog) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.85f)),
+                contentAlignment = Alignment.Center
+            ) {
+                if (isWatchingAd) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator(color = Color.White)
+                        Spacer(modifier = Modifier.height(16.dp))
+                        Text("Reklam Yükleniyor ve İzleniyor...", color = Color.White)
+
+                        LaunchedEffect(Unit) {
+                            kotlinx.coroutines.delay(2000)
+
+                            var isUndone = false
+                            for (i in 0 until undoStepsCount) {
+                                if (engine.undo()) {
+                                    isUndone = true
+                                }
+                            }
+
+                            if (isUndone) {
+                                boardState = engine.board.map { row -> row.map { it?.copy() }.toTypedArray() }.toTypedArray()
+                                currentScore = engine.score
+                                isGameOver = false
+                            }
+
+                            isWatchingAd = false
+                            showAdDialog = false
+                        }
+                    }
+                } else {
+                    Card(
+                        modifier = Modifier.width(300.dp).padding(16.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = if (isDarkMode) Color(0xFF2B2D37) else Color(0xFFFAF8EF))
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(20.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text("PİŞMAN MISIN? 😅", fontSize = 20.sp, fontWeight = FontWeight.Bold, color = if (isDarkMode) Color.White else Color(0xFF776E65))
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text("Kısa bir reklam izleyerek hamlelerini geri alabilirsin!", textAlign = androidx.compose.ui.text.style.TextAlign.Center, color = if (isDarkMode) Color.LightGray else Color.DarkGray)
+                            Spacer(modifier = Modifier.height(24.dp))
+
+                            Button(
+                                onClick = { isWatchingAd = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFFE94560)),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text("🎥 Reklam İzle & Geri Al", color = Color.White, fontWeight = FontWeight.Bold)
+                            }
+                            Spacer(modifier = Modifier.height(8.dp))
+                            TextButton(onClick = { showAdDialog = false }) {
+                                Text("Vazgeç", color = Color.Gray)
+                            }
+                        }
                     }
                 }
             }

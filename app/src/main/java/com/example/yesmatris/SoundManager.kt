@@ -8,7 +8,10 @@ import android.os.VibratorManager
 
 class SoundManager(context: Context) {
     private val soundPool: SoundPool = SoundPool.Builder().setMaxStreams(5).build()
-    private var soundId: Int = 0
+
+    private var popSoundId: Int = 0
+    private var mergeSoundId: Int = 0
+    private var recordSoundId: Int = 0 // YENİ: Rekor kırma sesi
 
     var isSoundEnabled: Boolean = true
     var isVibrationEnabled: Boolean = true
@@ -22,21 +25,40 @@ class SoundManager(context: Context) {
     }
 
     init {
-        // raw klasöründeki tıksesi.mp3 dosyasını yüklüyoruz
         try {
-            soundId = soundPool.load(context, R.raw.tik_sesi, 1)        } catch (e: Exception) {
+            // Sadece kayma varsa (Puan yok, kaba ses)
+            popSoundId = soundPool.load(context, R.raw.puansiz, 1)
+
+            // Sayılar birleşip puan gelirse (Puan var, ince ses)
+            mergeSoundId = soundPool.load(context, R.raw.puanli, 1)
+
+            // Yeni rekor kırılırsa
+            recordSoundId = soundPool.load(context, R.raw.rekor, 1)
+
+        } catch (e: Exception) {
             e.printStackTrace()
         }
     }
 
-    // Ses çalma fonksiyonu
     fun playPopSound() {
-        if (isSoundEnabled && soundId != 0) {
-            soundPool.play(soundId, 1f, 1f, 1, 0, 1f)
+        if (isSoundEnabled && popSoundId != 0) {
+            soundPool.play(popSoundId, 1f, 1f, 1, 0, 1f)
         }
     }
 
-    // Kısa titreşim fonksiyonu
+    fun playMergeSound() {
+        if (isSoundEnabled && mergeSoundId != 0) {
+            soundPool.play(mergeSoundId, 1f, 1f, 1, 0, 1f)
+        }
+    }
+
+    // YENİ: Rekor Sesi Çalma Fonksiyonu
+    fun playRecordSound() {
+        if (isSoundEnabled && recordSoundId != 0) {
+            soundPool.play(recordSoundId, 1f, 1f, 1, 0, 1f)
+        }
+    }
+
     fun vibrate() {
         if (isVibrationEnabled) {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {

@@ -20,7 +20,36 @@ class GameEngine {
         addRandomNumber()
         addRandomNumber()
     }
+    // --- GERİ AL (UNDO) SİSTEMİ ---
+    // Son 5 hamleyi hafızada tutacak yığın (Stack)
+    private val history = mutableListOf<Pair<Array<Array<Tile?>>, Int>>()
 
+    fun saveState(oldBoard: Array<Array<Tile?>>, oldScore: Int) {
+        // Tahtanın o anki kopyasını alıp geçmişe ekliyoruz
+        val boardCopy = oldBoard.map { row -> row.map { it?.copy() }.toTypedArray() }.toTypedArray()
+        history.add(Pair(boardCopy, oldScore))
+
+        // Hafıza dolmasın diye sadece son 5 hamleyi tutalım
+        if (history.size > 5) {
+            history.removeAt(0)
+        }
+    }
+
+    fun canUndo(): Boolean = history.isNotEmpty()
+
+    fun undo(): Boolean {
+        if (history.isNotEmpty()) {
+            // Son kaydedilen durumu listeden çıkarıp mevcut duruma eşitliyoruz
+            // YENİ: removeLast() yerine tüm Android sürümlerinde çalışan removeAt() kullanıyoruz!
+            val lastState = history.removeAt(history.size - 1)
+
+            board = lastState.first.map { row -> row.map { it?.copy() }.toTypedArray() }.toTypedArray()
+            score = lastState.second
+            return true
+        }
+        return false
+    }
+    // ------------------------------
     fun addRandomNumber() {
         val emptyCells = mutableListOf<Pair<Int, Int>>()
         for (i in 0 until 4) {
@@ -120,5 +149,32 @@ class GameEngine {
             result[j] = nonNulls[j]
         }
         return result
+    }
+    // Tahtayı kaydetmek için düz bir metne (String) çevirir
+    fun getBoardAsString(): String {
+        val list = mutableListOf<Int>()
+        for (r in 0 until 4) {
+            for (c in 0 until 4) {
+                list.add(board[r][c]?.value ?: 0)
+            }
+        }
+        return list.joinToString(",")
+    }
+
+    // Metinden tahtayı ve skoru geri yükler
+    fun loadState(savedScore: Int, boardString: String) {
+        score = savedScore
+        val values = boardString.split(",").map { it.toIntOrNull() ?: 0 }
+        var index = 0
+        for (r in 0 until 4) {
+            for (c in 0 until 4) {
+                val v = values.getOrNull(index++) ?: 0
+                if (v > 0) {
+                    board[r][c] = Tile(id = nextId++, value = v)
+                } else {
+                    board[r][c] = null
+                }
+            }
+        }
     }
 }
