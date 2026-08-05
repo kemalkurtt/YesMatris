@@ -1,10 +1,12 @@
-package com.example.yesmatris
+package com.example.yesmatris.utils
 
 import android.content.Context
 import android.media.SoundPool
+import android.os.Build
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import com.example.yesmatris.R
 
 class SoundManager(context: Context) {
     private val soundPool: SoundPool = SoundPool.Builder().setMaxStreams(5).build()
@@ -16,7 +18,7 @@ class SoundManager(context: Context) {
     var isSoundEnabled: Boolean = true
     var isVibrationEnabled: Boolean = true
 
-    private val vibrator: Vibrator = if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+    private val vibrator: Vibrator = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
         val vibratorManager = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as VibratorManager
         vibratorManager.defaultVibrator
     } else {
@@ -61,7 +63,7 @@ class SoundManager(context: Context) {
 
     fun vibrate() {
         if (isVibrationEnabled) {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 vibrator.vibrate(VibrationEffect.createOneShot(50, VibrationEffect.DEFAULT_AMPLITUDE))
             } else {
                 @Suppress("DEPRECATION")

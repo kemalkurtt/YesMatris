@@ -1,4 +1,4 @@
-package com.example.yesmatris
+package com.example.yesmatris.utils
 
 // 1. Taşlara kimlik kazandıran sınıfımız. Compose artık taşları bu ID ile takip edecek!
 data class Tile(val id: Int, var value: Int)

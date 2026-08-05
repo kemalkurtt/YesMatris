@@ -1,3 +1,11 @@
 <resources>
     <string name="app_name">YesMatris</string>
+
+    <!-- Uygulama içi güncelleme -->
+    <string name="softwareUpdate_snackbar_message">Güncelleme indirildi.</string>
+    <string name="softwareUpdate_snackbar_button">YÜKLE</string>
+    <string name="softwareUpdate_dialogBox_title">Güncelleme Gerekli</string>
+    <string name="softwareUpdate_dialogBox_message">Uygulamayı kullanmaya devam edebilmek için son sürüme güncellemeniz gerekiyor.</string>
+    <string name="global_alert_retry">Tekrar Dene</string>
+    <string name="global_alert_cancel">İptal</string>
 </resources>

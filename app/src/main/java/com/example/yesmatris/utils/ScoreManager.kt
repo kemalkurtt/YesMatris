@@ -1,4 +1,4 @@
-package com.example.yesmatris
+package com.example.yesmatris.utils
 
 import android.content.Context
 import android.content.SharedPreferences

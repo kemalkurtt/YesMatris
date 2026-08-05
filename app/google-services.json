@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "654673426928",
+    "project_id": "yesmatris",
+    "storage_bucket": "yesmatris.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:654673426928:android:3b19e61c847aa0ea438535",
+        "android_client_info": {
+          "package_name": "com.example.yesmatris"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApPVeeUSDwvMdd4q4h3L7_b0JXmXDLYj0"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
