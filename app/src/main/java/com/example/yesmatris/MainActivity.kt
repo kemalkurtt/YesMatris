@@ -4,6 +4,8 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.activity.result.ActivityResult
+import androidx.activity.result.contract.ActivityResultContracts.StartIntentSenderForResult
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
@@ -11,38 +13,135 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarDuration
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.SnackbarResult
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.lifecycleScope
 import com.example.yesmatris.ui.theme.YesMatrisTheme
+import com.example.yesmatris.utils.GameEngine
+import com.example.yesmatris.utils.InAppUpdateHandler
+import com.example.yesmatris.utils.ScoreManager
+import com.example.yesmatris.utils.SoundManager
+import com.example.yesmatris.utils.Tile
+import com.google.android.play.core.appupdate.AppUpdateManager
+import com.google.android.play.core.appupdate.AppUpdateManagerFactory
+import com.google.android.play.core.install.InstallStateUpdatedListener
+import com.google.android.play.core.install.model.AppUpdateType
+import com.google.android.play.core.install.model.InstallStatus
 import kotlinx.coroutines.launch
+import org.koin.android.ext.android.inject
+import org.koin.androidx.viewmodel.ext.android.viewModel
+import org.koin.compose.koinInject
 import kotlin.math.abs
 
 class MainActivity : ComponentActivity() {
+
+    private val viewModel: MainViewModel by viewModel()
+    private val inAppUpdateHandler: InAppUpdateHandler by inject()
+
+    private lateinit var appUpdateManager: AppUpdateManager
+    private var isAppUpdateMust = true
+    private var isFlexibleUpdatePrompted = false
+
+    /** Compose ile gösterilen güncelleme uyarılarının durumu. */
+    private var showCompleteUpdateSnackbar by mutableStateOf(false)
+    private var showInstallNeededDialog by mutableStateOf(false)
+
+    private val activityResultLauncher =
+        registerForActivityResult(StartIntentSenderForResult()) { result: ActivityResult ->
+            when {
+                result.resultCode != RESULT_OK && isAppUpdateMust -> showInstallNeeded()
+                result.resultCode != RESULT_OK && !isAppUpdateMust -> appUpdateManager.unregisterListener(
+                    listener
+                )
+            }
+        }
+
+    private val listener = InstallStateUpdatedListener { state ->
+        when {
+            state.installStatus() == InstallStatus.DOWNLOADED -> {
+                popupSnackbarForCompleteUpdate()
+            }
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
             var isDarkMode by remember { mutableStateOf(true) }
             var showSplash by remember { mutableStateOf(true) }
+            val snackbarHostState = remember { SnackbarHostState() }
 
             LaunchedEffect(Unit) {
                 kotlinx.coroutines.delay(2200)
                 showSplash = false
             }
 
+            // Esnek (flexible) güncelleme indirildiğinde kurulumu tetikleyen snackbar
+            LaunchedEffect(showCompleteUpdateSnackbar) {
+                if (!showCompleteUpdateSnackbar) return@LaunchedEffect
+                val result = snackbarHostState.showSnackbar(
+                    message = getString(R.string.softwareUpdate_snackbar_message),
+                    actionLabel = getString(R.string.softwareUpdate_snackbar_button),
+                    withDismissAction = false,
+                    duration = SnackbarDuration.Indefinite
+                )
+                showCompleteUpdateSnackbar = false
+                if (result == SnackbarResult.ActionPerformed) {
+                    appUpdateManager.completeUpdate()
+                }
+            }
+
             YesMatrisTheme(darkTheme = isDarkMode) {
-                Scaffold(modifier = Modifier.fillMaxSize()) { innerPadding ->
+                Scaffold(
+                    modifier = Modifier.fillMaxSize(),
+                    snackbarHost = { SnackbarHost(hostState = snackbarHostState) }
+                ) { innerPadding ->
                     if (showSplash) {
                         SplashScreen(isDarkMode = isDarkMode)
                     } else {
@@ -53,9 +152,106 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
+
+                if (showInstallNeededDialog) {
+                    InstallNeededDialog(
+                        onRetry = {
+                            showInstallNeededDialog = false
+                            inAppUpdateHandler.checkForInAppUpdate(
+                                appUpdateManager,
+                                AppUpdateType.IMMEDIATE,
+                                listener,
+                                activityResultLauncher,
+                                ::markAppUpdateFlexible
+                            )
+                        },
+                        onCancel = { finish() }
+                    )
+                }
+            }
+        }
+        isFlexibleUpdatePrompted = savedInstanceState?.getBoolean(IS_FLEXIBLE_UPDATE_PROMPTED, false) == true
+        appUpdateManager = AppUpdateManagerFactory.create(this)
+        viewModel.fetchRemoteConfig()
+        lifecycleScope.launch {
+            viewModel.minRequiredVersion.collect {
+                if (it != 1) {
+                    setInAppUpdate(it)
+                }
             }
         }
     }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        outState.putBoolean(IS_FLEXIBLE_UPDATE_PROMPTED, isFlexibleUpdatePrompted)
+    }
+
+    private fun setInAppUpdate(lastImmediateUpdateVersion: Int) {
+        val appBuildVersion = BuildConfig.VERSION_CODE
+        if (appBuildVersion < lastImmediateUpdateVersion) {
+            inAppUpdateHandler.checkForInAppUpdate(appUpdateManager, AppUpdateType.IMMEDIATE, listener, activityResultLauncher, ::markAppUpdateFlexible)
+        } else {
+            inAppUpdateHandler.checkForInAppUpdate(appUpdateManager, AppUpdateType.FLEXIBLE, listener, activityResultLauncher, ::markAppUpdateFlexible)
+        }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        inAppUpdateHandler.checkIfAnUpdateRunning(appUpdateManager, listener, activityResultLauncher, ::markAppUpdateFlexible)
+    }
+
+    override fun onDestroy() {
+        appUpdateManager.unregisterListener(listener)
+        super.onDestroy()
+    }
+
+    fun markAppUpdateFlexible() {
+        isAppUpdateMust = false
+    }
+
+    private fun popupSnackbarForCompleteUpdate() {
+        if (isFlexibleUpdatePrompted) return
+        isFlexibleUpdatePrompted = true
+        showCompleteUpdateSnackbar = true
+    }
+
+    private fun showInstallNeeded() {
+        showInstallNeededDialog = true
+    }
+
+    companion object {
+        private const val IS_FLEXIBLE_UPDATE_PROMPTED = "isFlexibleUpdatePrompted"
+    }
+}
+
+/**
+ * Zorunlu güncelleme yarıda kesildiğinde gösterilen, kapatılamayan uyarı.
+ */
+@Composable
+private fun InstallNeededDialog(
+    onRetry: () -> Unit,
+    onCancel: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = { /* zorunlu güncelleme: dışarı tıklayarak kapatılamaz */ },
+        title = { Text(text = stringResource(R.string.softwareUpdate_dialogBox_title)) },
+        text = { Text(text = stringResource(R.string.softwareUpdate_dialogBox_message)) },
+        confirmButton = {
+            TextButton(onClick = onRetry) {
+                Text(text = stringResource(R.string.global_alert_retry))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) {
+                Text(text = stringResource(R.string.global_alert_cancel))
+            }
+        },
+        properties = DialogProperties(
+            dismissOnBackPress = false,
+            dismissOnClickOutside = false
+        )
+    )
 }
 
 @Composable
@@ -64,9 +260,8 @@ fun GameScreen(
     isDarkMode: Boolean,
     onThemeChanged: (Boolean) -> Unit
 ) {
-    val context = LocalContext.current
-    val scoreManager = remember { ScoreManager(context) }
-    val soundManager = remember { SoundManager(context) }
+    val scoreManager: ScoreManager = koinInject()
+    val soundManager: SoundManager = koinInject()
     val coroutineScope = rememberCoroutineScope()
 
     var showHowToPlay by remember { mutableStateOf(false) }
